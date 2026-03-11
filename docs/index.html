@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>淋浴房计算器 (L型 & 偏移方向修复版)</title>
+    <style>
+        :root { --primary: #2563eb; --bg: #f3f4f6; --card: #ffffff; --text: #1f2937; --success: #059669; --border: #e5e7eb; --wall-color: #1f2937; --label-color: #1f2937; --guide-color: #dc2626; --guide-text-color: #dc2626; --angle-color: #d97706; }
+        body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
+        .container { background: var(--card); width: 100%; max-width: 800px; border-radius: 16px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1); overflow: hidden; padding-bottom: 20px; }
+        header { background: var(--primary); color: white; padding: 15px 20px; text-align: center; }
+        header h1 { margin: 0; font-size: 1.3rem; }
+        header p { margin: 5px 0 0; opacity: 0.8; font-size: 0.8rem; }
+        .content { padding: 20px; }
+        .filter-row { display: flex; gap: 10px; margin-bottom: 15px; flex-wrap: wrap; }
+        .form-group { flex: 1; display: flex; flex-direction: column; position: relative; min-width: 120px; }
+        label { display: block; margin-bottom: 5px; font-weight: 600; font-size: 0.8rem; color: #4b5563; }
+        input, select { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; transition: all 0.2s; background-color: white; }
+        input:focus, select:focus { border-color: var(--primary); outline: none; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.1); }
+        .searchable-select { position: relative; }
+        .options-list { position: absolute; top: 100%; left: 0; right: 0; background: white; border: 1px solid var(--primary); border-radius: 6px; max-height: 200px; overflow-y: auto; z-index: 100; display: none; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); }
+        .options-list.show { display: block; }
+        .option-item { padding: 8px 12px; cursor: pointer; font-size: 0.9rem; border-bottom: 1px solid #f3f4f6; }
+        .option-item:hover { background-color: #eff6ff; color: var(--primary); }
+        .option-item:last-child { border-bottom: none; }
+        .input-row { display: flex; gap: 10px; margin-bottom: 15px; }
+        
+        .btn-calc { width: 100%; padding: 12px; background-color: var(--success); color: white; border: none; border-radius: 8px; font-size: 1rem; font-weight: bold; cursor: pointer; transition: background 0.2s; margin-top: 5px; }
+        .btn-calc:hover { background-color: #047857; }
+
+        .diagram-box { 
+            width: 100%; 
+            height: 280px; 
+            background: #f8fafc; 
+            border: 2px dashed var(--border); 
+            border-radius: 12px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            margin: 20px 0; 
+            position: relative; 
+            overflow: visible; /* 关键：允许SVG内容溢出 */
+        }
+        svg { width: 100%; height: 100%; max-width: 600px; }
+        
+        .svg-wall { stroke: var(--wall-color); stroke-width: 4; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+        .svg-guide { stroke: var(--guide-color); stroke-width: 2.5; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 4 2; opacity: 0.95; }
+        .svg-angle-arc { fill: none; stroke: var(--angle-color); stroke-width: 2; }
+        .svg-text, .svg-guide-text, .svg-angle-text { font-size: 16px; fill: var(--label-color); font-weight: 800; font-family: monospace; text-anchor: middle; dominant-baseline: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 3.5px; }
+        .svg-guide-text { fill: var(--guide-text-color); }
+        .svg-angle-text { fill: var(--angle-color); }
+
+        .result-area { margin-top: 20px; background: #f0fdf4; border-radius: 12px; padding: 15px; border: 1px solid #bbf7d0; display: none; }
+        .result-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center; }
+        .res-item { background: white; padding: 10px; border-radius: 6px; border: 1px solid #86efac; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .res-label { font-size: 0.75rem; color: #166534; margin-bottom: 4px; font-weight: bold; }
+        .res-value { font-size: 1.2rem; font-weight: bold; color: #15803d; font-family: monospace; }
+        .res-cad-ref { font-size: 0.65rem; color: #666; margin-top: 2px; }
+
+        #debug-info { text-align: center; font-size: 0.85rem; color: #666; margin-top: 5px; font-family: monospace; background: #fffbeb; padding: 10px; border-radius: 4px; border: 1px solid #fcd34d; line-height: 1.6; }
+        
+        .control-row { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; background: #eff6ff; padding: 12px; border-radius: 8px; border: 1px solid #bfdbfe; flex-wrap: wrap; }
+        .control-row label { margin: 0; font-size: 0.85rem; color: #1e40af; font-weight: 600; }
+        .control-row input[type="number"] { width: 70px; }
+        .control-note { font-size: 0.75rem; color: #64728b; width: 100%; margin-top: 4px; }
+
+        .mode-selector {
+            display: flex;
+            background: #dbeafe;
+            border-radius: 8px;
+            padding: 4px;
+            gap: 4px;
+            flex: 1;
+            min-width: 200px;
+        }
+        .mode-btn {
+            flex: 1;
+            border: none;
+            background: transparent;
+            padding: 6px 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: #1e40af;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-align: center;
+            line-height: 1.2;
+        }
+        .mode-btn.active {
+            background: white;
+            color: var(--primary);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .mode-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.5);
+        }
+
+        @media (max-width: 600px) { 
+            .filter-row { flex-direction: column; } 
+            .form-group { width: 100%; } 
+            .input-row { flex-wrap: wrap; } 
+            .input-row .form-group { flex: 1 1 45%; } 
+            .control-row { flex-direction: column; align-items: stretch; }
+            .mode-selector { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <header>
+        <h1>📐 淋浴房计算器 (L型 & 偏移修复版)</h1>
+        <p>修复L型左右转角及偏移方向</p>
+    </header>
+
+    <div class="content">
+        <div class="filter-row">
+            <div class="form-group">
+                <label for="room-type">房型</label>
+                <select id="room-type" onchange="handleRoomTypeChange()">
+                    <option value="diamond">钻石型</option>
+                    <option value="lshape">L 型</option>
+                </select>
+            </div>
+            
+            <div class="form-group searchable-select">
+                <label for="model-input">款式 (可搜索)</label>
+                <input type="text" id="model-input" placeholder="输入型号..." autocomplete="off" oninput="handleModelInput()" onclick="showOptions()">
+                <div id="options-list" class="options-list"></div>
+                <input type="hidden" id="model-value">
+            </div>
+
+            <div class="form-group">
+                <label for="install-type">安装基准</label>
+                <select id="install-type" onchange="drawDiagram()">
+                    <option value="stone_base">石基尺寸</option>
+                    <option value="sink_top">下沉安装在上</option>
+                    <option value="stone_center">石基居中</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="control-row">
+            <div style="display:flex; flex-direction:column; align-items:flex-start; margin-right:15px; min-width: 150px;">
+                <label style="font-size:0.9rem; color:#1e40af; margin-bottom:4px;">📏 尺寸模式</label>
+                <div class="mode-selector" id="diamond-mode-selector">
+                    <button class="mode-btn active" onclick="setMode('angle')" id="btn-mode-angle">3边<br>角度已知</button>
+                    <button class="mode-btn" onclick="setMode('cross')" id="btn-mode-cross">3边<br>两端到角</button>
+                    <button class="mode-btn" onclick="setMode('pentagon')" id="btn-mode-pentagon">5边<br>尺寸</button>
+                </div>
+                <div class="mode-selector" id="lshape-mode-selector" style="display:none;">
+                    <button class="mode-btn active" onclick="setLShapeMode('left')" id="btn-lshape-left">左<br>转角</button>
+                    <button class="mode-btn" onclick="setLShapeMode('right')" id="btn-lshape-right">右<br>转角</button>
+                </div>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; align-items:flex-start; flex:1;">
+                <label for="shorten-input">✂️ 端点缩短 (每端 mm)</label>
+                <input type="number" id="shorten-input" value="5" step="0.5" oninput="drawDiagram()">
+            </div>
+        </div>
+        <div class="control-note" id="mode-tip">
+            💡 模式2说明：输入左/中/右长度，以及“左端点到右折点距离”和“右端点到左折点距离”，系统将自动计算角度。
+        </div>
+
+        <div class="diagram-box">
+            <svg id="main-svg" preserveAspectRatio="xMidYMid meet">
+                <text x="50%" y="50%" text-anchor="middle" fill="#9ca3af" font-size="16">请输入数据生成示意图</text>
+            </svg>
+        </div>
+
+        <div id="diamond-inputs">
+            <div id="input-group-sides-angle" class="input-row">
+                <div class="form-group"><label>左线 (mm)</label><input type="number" id="input-l" placeholder="0" oninput="drawDiagram()"></div>
+                <div class="form-group"><label>中线 (mm)</label><input type="number" id="input-c" placeholder="0" oninput="drawDiagram()"></div>
+                <div class="form-group"><label>右线 (mm)</label><input type="number" id="input-r" placeholder="0" oninput="drawDiagram()"></div>
+            </div>
+            
+            <div id="input-group-angles" class="input-row">
+                <div class="form-group"><label>左角度 (°)</label><input type="number" id="angle-l" value="135" oninput="drawDiagram()"></div>
+                <div class="form-group"><label>右角度 (°)</label><input type="number" id="angle-r" value="135" oninput="drawDiagram()"></div>
+                <div class="form-group" style="visibility:hidden"><input></div>
+            </div>
+
+            <div id="input-group-sides-cross" class="input-row" style="display:none;">
+                <div class="form-group"><label>左线 (mm)</label><input type="number" id="input-l-2" placeholder="0" oninput="drawDiagram()"></div>
+                <div class="form-group"><label>中线 (mm)</label><input type="number" id="input-c-2" placeholder="0" oninput="drawDiagram()"></div>
+                <div class="form-group"><label>右线 (mm)</label><input type="number" id="input-r-2" placeholder="0" oninput="drawDiagram()"></div>
+            </div>
+            <div id="input-group-cross-dist" class="input-row" style="display:none;">
+                <div class="form-group">
+                    <label>左端 ➝ 右折点 (mm)</label>
+                    <input type="number" id="dist-l-to-p2" placeholder="例: 1000" oninput="drawDiagram()">
+                    <div style="font-size:0.65rem;color:#999;margin-top:2px;">(左线起点 到 中右连接点)</div>
+                </div>
+                <div class="form-group">
+                    <label>右端 ➝ 左折点 (mm)</label>
+                    <input type="number" id="dist-r-to-p1" placeholder="例: 1200" oninput="drawDiagram()">
+                    <div style="font-size:0.65rem;color:#999;margin-top:2px;">(右线起点 到 中左连接点)</div>
+                </div>
+                <div class="form-group" style="visibility:hidden"><input></div>
+            </div>
+        </div>
+
+        <div id="lshape-inputs" style="display:none;">
+            <div class="input-row">
+                <div class="form-group"><label>正面尺寸 (mm)</label><input type="number" id="input-f" placeholder="0" oninput="drawDiagram()"></div>
+                <div class="form-group"><label>侧面尺寸 (mm)</label><input type="number" id="input-s" placeholder="0" oninput="drawDiagram()"></div>
+                <div class="form-group" style="visibility:hidden"><input></div>
+            </div>
+            <div class="control-note" style="margin-top:5px; color:#666;">
+                ℹ️ L 型默认正面与侧面夹角为 90°，向外偏移。
+            </div>
+        </div>
+
+        <button class="btn-calc" onclick="calculate()">🚀 计算最终下料单</button>
+
+        <div id="result-area" class="result-area">
+            <div style="text-align:center; margin-bottom:10px; font-weight:bold; color:#166534; font-size:0.9rem;">
+                下料结果：<span id="res-model-name" style="color:var(--primary)">-</span>
+            </div>
+            <div class="result-grid" id="result-grid"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    var models = [
+        "010 款", "054 款", "062 款", "063 款", "101 款", "112 款", "124 款", "125 款", "225 款",
+        "881 款", "882 款", "5001 款", "5002 款", "5003 款", "5004 款",
+        "7011 款", "7012 款", "7013 款", "8015 款", "8016 款", "8225 款",
+        "8317D 款", "8317KS 款", "8317K 款", "8317S 款", "8317 款", "317 款", "025 款"
+    ];
+
+    // 核心修复点1: 偏移值定义
+    // 石基(stone_base): 向内收缩 -> 负值
+    // 下沉(sink_top): 向外扩展 -> 正值
+    // 居中(stone_center): 不变 -> 0
+    var modelOffsets = {
+        "010": { stone_base: -13, sink_top: 22, stone_center: 0 }, 
+        "054": { stone_base: -13, sink_top: 21, stone_center: 0 },
+        "062": { stone_base: -7,  sink_top: 51, stone_center: 0 }, 
+        "063": { stone_base: -7,  sink_top: 51, stone_center: 0 },
+        "101": { stone_base: -13, sink_top: 22, stone_center: 0 }, 
+        "112": { stone_base: -13, sink_top: 19, stone_center: 0 },
+        "124": { stone_base: -13, sink_top: 19, stone_center: 0 }, 
+        "125": { stone_base: -13, sink_top: 31.2, stone_center: 0 },
+        "225": { stone_base: -13, sink_top: 30.6, stone_center: 0 }, 
+        "881": { stone_base: -13, sink_top: 21, stone_center: 0 },
+        "882": { stone_base: -13, sink_top: 19.5, stone_center: 0 }, 
+        "5001": { stone_base: -13, sink_top: 19, stone_center: 0 },
+        "5002": { stone_base: -13, sink_top: 19, stone_center: 0 }, 
+        "5003": { stone_base: -13, sink_top: 47, stone_center: 0 },
+        "5004": { stone_base: -13, sink_top: 47, stone_center: 0 }, 
+        "7011": { stone_base: -13, sink_top: 30.6, stone_center: 0 }, 
+        "7012": { stone_base: -13, sink_top: 30.6, stone_center: 0 }, 
+        "7013": { stone_base: -13, sink_top: 30.6, stone_center: 0 },
+        "8015": { stone_base: -13, sink_top: 32, stone_center: 0 }, 
+        "8016": { stone_base: -13, sink_top: 40, stone_center: 0 },
+        "8225": { stone_base: -13, sink_top: 31.2, stone_center: 0 }, 
+        "8317D": { stone_base: -13, sink_top: 31.2, stone_center: 0 },
+        "8317KS": { stone_base: -7, sink_top: 47, stone_center: 0 }, 
+        "8317K": { stone_base: -7, sink_top: 47, stone_center: 0 },
+        "8317S": { stone_base: -13, sink_top: 31.1, stone_center: 0 }, 
+        "8317": { stone_base: -13, sink_top: 31.2, stone_center: 0 },
+        "317": { stone_base: -13, sink_top: 30.6, stone_center: 0 }, 
+        "025": { stone_base: -13, sink_top: 38, stone_center: 0 }
+    };
+
+    var geoLengths = { l: 0, c: 0, r: 0, f: 0, s: 0 };
+    var currentMode = 'angle';
+    var lShapeCornerMode = 'left';
+    var calculatedAngles = { l: 135, r: 135 };
+    
+    var optionsList = document.getElementById('options-list');
+    var modelInput = document.getElementById('model-input');
+    var modelValue = document.getElementById('model-value');
+    var debugInfo = document.getElementById('debug-info');
+    var shortenInput = document.getElementById('shorten-input');
+    var modeTip = document.getElementById('mode-tip');
+
+    function initOptions() {
+        optionsList.innerHTML = '';
+        models.forEach(function(model) {
+            var div = document.createElement('div');
+            div.className = 'option-item';
+            div.textContent = model;
+            div.onclick = function() { selectOption(model); };
+            optionsList.appendChild(div);
+        });
+    }
+
+    function showOptions() { filterOptions(); optionsList.classList.add('show'); }
+    function filterOptions() {
+        var filter = modelInput.value.toLowerCase().replace('款', '');
+        Array.from(optionsList.getElementsByClassName('option-item')).forEach(function(item) {
+            var text = item.textContent.toLowerCase().replace('款', '');
+            item.style.display = text.includes(filter) ? '' : 'none';
+        });
+        if(Array.from(optionsList.children).some(function(c) { return c.style.display !== 'none'; })) {
+            optionsList.classList.add('show');
+        } else {
+            optionsList.classList.remove('show');
+        }
+    }
+    function selectOption(model) {
+        modelInput.value = model;
+        modelValue.value = model.replace('款', '');
+        optionsList.classList.remove('show');
+        drawDiagram();
+    }
+    function handleModelInput() {
+        filterOptions();
+        var rawVal = modelInput.value.trim().replace('款', '');
+        modelValue.value = rawVal; 
+        drawDiagram();
+    }
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.searchable-select')) optionsList.classList.remove('show');
+    });
+
+    function handleRoomTypeChange() {
+        var type = document.getElementById('room-type').value;
+        document.getElementById('diamond-inputs').style.display = type === 'diamond' ? 'block' : 'none';
+        document.getElementById('lshape-inputs').style.display = type === 'lshape' ? 'block' : 'none';
+        document.getElementById('result-area').style.display = 'none';
+
+        if (type === 'diamond') {
+            document.getElementById('diamond-mode-selector').style.display = 'flex';
+            document.getElementById('lshape-mode-selector').style.display = 'none';
+            updateModeUI();
+        } else {
+            document.getElementById('diamond-mode-selector').style.display = 'none';
+            document.getElementById('lshape-mode-selector').style.display = 'flex';
+            updateLShapeModeUI();
+        }
+        drawDiagram();
+    }
+
+    function setMode(mode) {
+        if (mode === 'pentagon') {
+            alert("5边尺寸模式正在开发中，敬请期待！");
+            return;
+        }
+        currentMode = mode;
+        updateModeUI();
+        drawDiagram();
+    }
+
+    function updateModeUI() {
+        var type = document.getElementById('room-type').value;
+        if (type !== 'diamond') return;
+
+        document.querySelectorAll('#diamond-mode-selector .mode-btn').forEach(function(btn) { btn.classList.remove('active'); });
+        document.getElementById('btn-mode-' + currentMode).classList.add('active');
+
+        if(currentMode === 'cross') {
+            modeTip.innerHTML = "💡 <b>操作指南</b>：测量【左线起点】到【中线与右线连接点】的距离，以及【右线起点】到【中线与左线连接点】的距离。系统会自动反算角度。";
+        } else {
+            modeTip.innerHTML = "💡 切换模式将改变下方输入框。";
+        }
+
+        var sideAngleGroup = document.getElementById('input-group-sides-angle');
+        var angleInputs = document.getElementById('input-group-angles');
+        var sideCrossGroup = document.getElementById('input-group-sides-cross');
+        var crossInputs = document.getElementById('input-group-cross-dist');
+
+        if (currentMode === 'angle') {
+            sideAngleGroup.style.display = 'flex';
+            angleInputs.style.display = 'flex';
+            sideCrossGroup.style.display = 'none';
+            crossInputs.style.display = 'none';
+        } else if (currentMode === 'cross') {
+            sideAngleGroup.style.display = 'none';
+            angleInputs.style.display = 'none';
+            sideCrossGroup.style.display = 'flex';
+            crossInputs.style.display = 'flex';
+        }
+    }
+
+    function setLShapeMode(mode) {
+        lShapeCornerMode = mode;
+        updateLShapeModeUI();
+        drawDiagram();
+    }
+
+    function updateLShapeModeUI() {
+        var type = document.getElementById('room-type').value;
+        if (type !== 'lshape') return;
+
+        document.querySelectorAll('#lshape-mode-selector .mode-btn').forEach(function(btn) { btn.classList.remove('active'); });
+        document.getElementById('btn-lshape-' + lShapeCornerMode).classList.add('active');
+        modeTip.innerHTML = '💡 当前L型模式：' + (lShapeCornerMode === 'left' ? '左转角' : '右转角') + '，侧面将从正面的' + (lShapeCornerMode === 'left' ? '右端' : '左端') + '向上延伸。';
+    }
+
+    function calculateAngleFromSides(a, b, c) {
+        var cosVal = (a*a + b*b - c*c) / (2 * a * b);
+        var clampedCos = Math.max(-1, Math.min(1, cosVal));
+        var rad = Math.acos(clampedCos);
+        return rad * 180 / Math.PI;
+    }
+
+    function getTransform(points, canvasW, canvasH, padding) {
+        if (typeof padding === 'undefined') { padding = 5; }
+        if (points.length === 0) return { scale: 1, tx: 0, ty: 0 };
+        var xs = points.map(function(p) { return p.x; });
+        var ys = points.map(function(p) { return p.y; });
+        var minX = Math.min.apply(Math, xs), maxX = Math.max.apply(Math, xs);
+        var minY = Math.min.apply(Math, ys), maxY = Math.max.apply(Math, ys);
+        var graphW = maxX - minX, graphH = maxY - minY;
+        var availW = canvasW - padding * 2, availH = canvasH - padding * 2;
+        var scale = Math.min(availW / (graphW || 1), availH / (graphH || 1));
+        return { 
+            scale: scale, 
+            tx: (canvasW / 2) - ((minX + maxX) / 2 * scale), 
+            ty: (canvasH / 2) - ((minY + maxY) / 2 * scale) 
+        };
+    }
+
+    function getModelOffset() {
+        var installType = document.getElementById('install-type').value;
+        var inputVal = modelInput.value.trim().replace('款', '');
+        if (!inputVal) {
+            var defaultOffset = (installType === 'stone_center') ? 0 : (installType === 'sink_top') ? 22 : -13;
+            return { offset: defaultOffset, key: "默认" };
+        }
+        if (modelOffsets.hasOwnProperty(inputVal)) {
+            var data = modelOffsets[inputVal];
+            var offset = data[installType] || 0; // 使用提供的类型，如果未定义则默认为0
+            return { offset: offset, key: inputVal };
+        }
+        for (var key in modelOffsets) {
+            if (inputVal.startsWith(key)) {
+                var data = modelOffsets[key];
+                var offset = data[installType] || 0;
+                return { offset: offset, key: key };
+            }
+        }
+        var defaultOffset2 = (installType === 'stone_center') ? 0 : (installType === 'sink_top') ? 22 : -13;
+        return { offset: defaultOffset2, key: "默认" };
+    }
+
+    function drawAngleArc(svg, pVertex, p1, p2, angleDeg, scale) {
+        var v1 = { x: p1.x - pVertex.x, y: p1.y - pVertex.y };
+        var v2 = { x: p2.x - pVertex.x, y: p2.y - pVertex.y };
+        
+        var len1 = Math.sqrt(v1.x*v1.x + v1.y*v1.y);
+        var len2 = Math.sqrt(v2.x*v2.x + v2.y*v2.y);
+        if(len1 === 0 || len2 === 0) return;
+        
+        var u1 = { x: v1.x/len1, y: v1.y/len1 };
+        var u2 = { x: v2.x/len2, y: v2.y/len2 };
+
+        var startAngle = Math.atan2(u1.y, u1.x);
+        var endAngle = Math.atan2(u2.y, u2.x);
+        
+        var diff = endAngle - startAngle;
+        while (diff <= -Math.PI) diff += 2*Math.PI;
+        while (diff > Math.PI) diff -= 2*Math.PI;
+        
+        var radius = 12 / scale; 
+        if (angleDeg > 160) radius = 10 / scale; 
+
+        var x1 = pVertex.x + u1.x * radius;
+        var y1 = pVertex.y + u1.y * radius;
+        var x2 = pVertex.x + u2.x * radius;
+        var y2 = pVertex.y + u2.y * radius;
+
+        var largeArcFlag = Math.abs(diff) > Math.PI ? 1 : 0;
+        var sweepFlag = diff > 0 ? 1 : 0;
+        
+        var pathData = 'M ' + x1 + ' ' + y1 + ' A ' + radius + ' ' + radius + ' 0 ' + largeArcFlag + ' ' + sweepFlag + ' ' + x2 + ' ' + y2;
+        svg.innerHTML += '<path d="' + pathData + '" class="svg-angle-arc" />';
+
+        var midAngle = startAngle + diff / 2;
+        var textRadius = radius * 1.6;
+        var tx = pVertex.x + Math.cos(midAngle) * textRadius;
+        var ty = pVertex.y + Math.sin(midAngle) * textRadius;
+        
+        svg.innerHTML += '<text x="' + tx + '" y="' + ty + '" class="svg-angle-text">' + Math.round(angleDeg) + '°</text>';
+    }
+
+    function getLineIntersection(p1, p2, p3, p4, offset) {
+        var dx1 = p2.x - p1.x, dy1 = p2.y - p1.y;
+        var len1 = Math.sqrt(dx1*dx1 + dy1*dy1);
+        var nx1 = -dy1 / len1, ny1 = dx1 / len1;
+        var op1 = { x: p1.x + nx1 * offset, y: p1.y + ny1 * offset };
+        var op2 = { x: p2.x + nx1 * offset, y: p2.y + ny1 * offset };
+
+        var dx2 = p4.x - p3.x, dy2 = p4.y - p3.y;
+        var len2 = Math.sqrt(dx2*dx2 + dy2*dy2);
+        var nx2 = -dy2 / len2, ny2 = dx2 / len2;
+        var op3 = { x: p3.x + nx2 * offset, y: p3.y + ny2 * offset };
+        var op4 = { x: p4.x + nx2 * offset, y: p4.y + ny2 * offset };
+
+        var x1 = op1.x, y1 = op1.y, x2 = op2.x, y2 = op2.y;
+        var x3 = op3.x, y3 = op3.y, x4 = op4.x, y4 = op4.y;
+        var denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+        if (denom === 0) return null;
+        var ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+        return { x: x1 + ua * (x2 - x1), y: y1 + ua * (y2 - y1) };
+    }
+
+    function drawDiagram() {
+        var type = document.getElementById('room-type').value;
+        var installType = document.getElementById('install-type').value;
+        var isSinkTop = (installType === 'sink_top');
+        var isStoneCenter = (installType === 'stone_center');
+        
+        var svg = document.getElementById('main-svg');
+        svg.innerHTML = '';
+
+        var modelData = getModelOffset();
+        var GUIDE_OFFSET_MM = modelData.offset;
+        var END_SHORTEN_MM = parseFloat(shortenInput.value) || 0; 
+        
+        var TEXT_OFFSET_MM = 50; 
+        var GUIDE_TEXT_OFFSET_MM = isSinkTop ? 20 : -20; 
+        var textDir = isSinkTop ? -1 : 1; 
+        var suffixText = isSinkTop ? "下沉区" : "石基";
+
+        var debugParts = ['款式：<b>' + modelData.key + '</b>', '房型：<b>' + type + '</b>', '安装：<b>' + installType + '</b>', '偏移：<b>' + GUIDE_OFFSET_MM + 'mm</b>'];
+
+        // 收集所有要绘制的点，用于最后的动态缩放
+        var allDrawnPoints = [];
+
+        if (type === 'diamond') {
+            // --- 钻石型代码保持不变 ---
+            var l, c, r, aL, aR;
+
+            if (currentMode === 'angle') {
+                l = parseFloat(document.getElementById('input-l').value) || 0;
+                c = parseFloat(document.getElementById('input-c').value) || 0;
+                r = parseFloat(document.getElementById('input-r').value) || 0;
+                aL = parseFloat(document.getElementById('angle-l').value);
+                aR = parseFloat(document.getElementById('angle-r').value);
+                if (isNaN(aL) || aL <= 90 || aL >= 180) aL = 135;
+                if (isNaN(aR) || aR <= 90 || aR >= 180) aR = 135;
+                calculatedAngles = { l: aL, r: aR };
+                debugParts.push('模式：<b>角度</b>', '输入角度：' + aL + '° / ' + aR + '°');
+
+            } else if (currentMode === 'cross') {
+                l = parseFloat(document.getElementById('input-l-2').value) || 0;
+                c = parseFloat(document.getElementById('input-c-2').value) || 0;
+                r = parseFloat(document.getElementById('input-r-2').value) || 0;
+                var distLtoP2 = parseFloat(document.getElementById('dist-l-to-p2').value) || 0;
+                var distRtoP1 = parseFloat(document.getElementById('dist-r-to-p1').value) || 0;
+
+                if (l > 0 && c > 0 && distRtoP1 > 0) {
+                    aL = calculateAngleFromSides(l, c, distLtoP2);
+                } else {
+                    aL = 135;
+                }
+                if (c > 0 && r > 0 && distLtoP2 > 0) {
+                     aR = calculateAngleFromSides(c, r, distRtoP1);
+                } else {
+                    aR = 135;
+                }
+                
+                if(isNaN(aL)) aL = 135;
+                if(isNaN(aR)) aR = 135;
+                calculatedAngles = { l: aL, r: aR };
+                debugParts.push('模式：<b>交叉测距</b>', '反算角度：' + aL.toFixed(1) + '° / ' + aR.toFixed(1) + '°');
+            }
+
+            if (l + c + r === 0) {
+                svg.innerHTML += '<text x="50%" y="50%" text-anchor="middle" fill="#9ca3af" font-size="16">请输入数据</text>';
+                debugInfo.innerHTML = debugParts.join(' | ');
+                return;
+            }
+
+            var radL = (180 - aL) * Math.PI / 180;
+            var dxL = -l * Math.cos(radL), dyL = -l * Math.sin(radL);
+            var radR = (180 - aR) * Math.PI / 180;
+            var dxR = r * Math.cos(radR), dyR = -r * Math.sin(radR);
+
+            var pts = [ 
+                { x: dxL, y: dyL }, 
+                { x: 0, y: 0 }, 
+                { x: c, y: 0 }, 
+                { x: c + dxR, y: dyR } 
+            ];
+
+            var transform = getTransform(pts, 500, 280); // 固定画布大小用于计算
+            var t = function(p) { return { x: p.x * transform.scale + transform.tx, y: p.y * transform.scale + transform.ty }; };
+            var tPts = pts.map(t);
+            var scale = transform.scale > 1 ? 1 : transform.scale;
+            
+            var textOffsetPx = TEXT_OFFSET_MM * scale;
+            var guideTextOffsetPx = GUIDE_TEXT_OFFSET_MM * scale;
+            var shortenPx = END_SHORTEN_MM * scale;
+
+            var pathData = 'M ' + tPts[0].x + ' ' + tPts[0].y + ' L ' + tPts[1].x + ' ' + tPts[1].y + ' L ' + tPts[2].x + ' ' + tPts[2].y + ' L ' + tPts[3].x + ' ' + tPts[3].y;
+            svg.innerHTML += '<path d="' + pathData + '" class="svg-wall" />';
+
+            drawAngleArc(svg, tPts[1], tPts[0], tPts[2], aL, scale);
+            drawAngleArc(svg, tPts[2], tPts[1], tPts[3], aR, scale);
+
+            var getPerpStart = function(pStart, pEnd, offset) {
+                var dx = pEnd.x - pStart.x, dy = pEnd.y - pStart.y;
+                var len = Math.sqrt(dx*dx + dy*dy);
+                var nx = -dy/len, ny = dx/len;
+                return { x: pStart.x + nx*offset, y: pStart.y + ny*offset };
+            };
+            var getPerpEnd = function(pStart, pEnd, offset) {
+                var dx = pEnd.x - pStart.x, dy = pEnd.y - pStart.y;
+                var len = Math.sqrt(dx*dx + dy*dy);
+                var nx = -dy/len, ny = dx/len;
+                return { x: pEnd.x + nx*offset, y: pEnd.y + ny*offset };
+            };
+
+            var newP1 = getLineIntersection(pts[0], pts[1], pts[1], pts[2], GUIDE_OFFSET_MM);
+            var newP2 = getLineIntersection(pts[1], pts[2], pts[2], pts[3], GUIDE_OFFSET_MM);
+            var newP0 = getPerpStart(pts[0], pts[1], GUIDE_OFFSET_MM);
+            var newP3 = getPerpEnd(pts[2], pts[3], GUIDE_OFFSET_MM);
+
+            var offPts = [newP0, newP1, newP2, newP3];
+            var tOffPts = offPts.map(t);
+
+            var getShortenedPt = function(tOff, isStart) {
+                if (isStart) {
+                    var dx = pts[1].x - pts[0].x, dy = pts[1].y - pts[0].y;
+                    var len = Math.sqrt(dx*dx + dy*dy);
+                    return { x: tOff.x + (dx/len) * shortenPx, y: tOff.y + (dy/len) * shortenPx };
+                } else {
+                    var dx = pts[3].x - pts[2].x, dy = pts[3].y - pts[2].y;
+                    var len = Math.sqrt(dx*dx + dy*dy);
+                    return { x: tOff.x - (dx/len) * shortenPx, y: tOff.y - (dy/len) * shortenPx };
+                }
+            };
+
+            var rStart = getShortenedPt(tOffPts[0], true);
+            var rEnd = getShortenedPt(tOffPts[3], false);
+
+            var len1 = Math.sqrt(Math.pow(tOffPts[1].x - rStart.x, 2) + Math.pow(tOffPts[1].y - rStart.y, 2)) / scale;
+            var len2 = Math.sqrt(Math.pow(tOffPts[2].x - tOffPts[1].x, 2) + Math.pow(tOffPts[2].y - tOffPts[1].y, 2)) / scale;
+            var len3 = Math.sqrt(Math.pow(rEnd.x - tOffPts[2].x, 2) + Math.pow(rEnd.y - tOffPts[2].y, 2)) / scale;
+            
+            geoLengths = { l: len1, c: len2, r: len3 };
+
+            var redPathData = 'M ' + rStart.x + ' ' + rStart.y + ' L ' + tOffPts[1].x + ' ' + tOffPts[1].y + ' L ' + tOffPts[2].x + ' ' + tOffPts[2].y + ' L ' + rEnd.x + ' ' + rEnd.y;
+            svg.innerHTML += '<path d="' + redPathData + '" class="svg-guide" />';
+
+            var drawLabels = function(pStart, pEnd, val, isRed, segmentLen) {
+                var mid = { x: (pStart.x + pEnd.x)/2, y: (pStart.y + pEnd.y)/2 };
+                var dx = pEnd.x - pStart.x; var dy = pEnd.y - pStart.y;
+                var len = Math.sqrt(dx*dx + dy*dy);
+                if (len === 0) return;
+                
+                var displayLen = isRed ? Math.round(segmentLen) : val;
+                var suffix = isRed ? " 材料尺寸" : suffixText;
+                var textContent = displayLen + suffix;
+
+                var nx = -dy/len; var ny = dx/len;
+                if (!isRed) {
+                    var isUpper = (mid.y < 280/2);
+                    if (isUpper && ny > 0) { nx=-nx; ny=-ny; }
+                    if (!isUpper && ny < 0) { nx=-nx; ny=-ny; }
+                }
+                var offsetDist = isRed ? guideTextOffsetPx : (textDir * textOffsetPx);
+                var tx = mid.x + nx * offsetDist; var ty = mid.y + ny * offsetDist;
+                var angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                if (angle > 90) angle -= 180; if (angle < -90) angle += 180;
+                
+                var className = isRed ? 'svg-guide-text' : 'svg-text';
+                svg.innerHTML += '<text x="' + tx + '" y="' + ty + '" class="' + className + '" transform="rotate(' + angle + ', ' + tx + ', ' + ty + ')">' + textContent + '</text>';
+                
+                // 将文本中心点也加入包围盒计算
+                allDrawnPoints.push({x: tx, y: ty});
+            };
+
+            drawLabels(tPts[0], tPts[1], l, false, 0);
+            drawLabels(tPts[1], tPts[2], c, false, 0);
+            drawLabels(tPts[2], tPts[3], r, false, 0);
+            
+            drawLabels(rStart, tOffPts[1], l, true, len1);
+            drawLabels(tOffPts[1], tOffPts[2], c, true, len2);
+            drawLabels(tOffPts[2], rEnd, r, true, len3);
+
+            // 添加所有点到总集合
+            allDrawnPoints.push.apply(allDrawnPoints, tPts);
+            allDrawnPoints.push.apply(allDrawnPoints, tOffPts);
+            allDrawnPoints.push(rStart, rEnd);
+
+        } else if (type === 'lshape') {
+            // --- 修复后的 L 型代码 ---
+            var f = parseFloat(document.getElementById('input-f').value) || 0;
+            var s = parseFloat(document.getElementById('input-s').value) || 0;
+            if (f + s === 0) {
+                svg.innerHTML += '<text x="50%" y="50%" text-anchor="middle" fill="#9ca3af" font-size="16">请输入数据</text>';
+                debugInfo.innerHTML = debugParts.join(' | ');
+                return;
+            }
+
+            debugParts.push('L型模式：<b>' + lShapeCornerMode + '转角</b>', '正面: ' + f + 'mm, 侧面: ' + s + 'mm');
+
+            // --- L型核心计算逻辑 (参照参考版本) ---
+            var pts;
+            if (lShapeCornerMode === 'left') {
+                pts = [
+                    { x: 0, y: -s },  // 侧面起点
+                    { x: 0, y: 0 },   // 转角点
+                    { x: f, y: 0 }    // 正面终点
+                ];
+            } else {
+                pts = [
+                    { x: f, y: -s },  // 侧面起点
+                    { x: f, y: 0 },   // 转角点
+                    { x: 0, y: 0 }    // 正面终点
+                ];
+            }
+
+            // 计算端点偏移函数
+            var getPerpStart = function(pStart, pEnd, offset) {
+                var dx = pEnd.x - pStart.x, dy = pEnd.y - pStart.y;
+                var len = Math.sqrt(dx*dx + dy*dy);
+                var nx = -dy/len, ny = dx/len;
+                if (lShapeCornerMode === 'right') { nx = -nx; ny = -ny; }
+                return { x: pStart.x + nx*offset, y: pStart.y + ny*offset };
+            };
+            var getPerpEnd = function(pStart, pEnd, offset) {
+                var dx = pEnd.x - pStart.x, dy = pEnd.y - pStart.y;
+                var len = Math.sqrt(dx*dx + dy*dy);
+                var nx = -dy/len, ny = dx/len;
+                if (lShapeCornerMode === 'right') { nx = -nx; ny = -ny; }
+                return { x: pEnd.x + nx*offset, y: pEnd.y + ny*offset };
+            };
+
+            var newP1 = getLineIntersection(pts[0], pts[1], pts[1], pts[2], GUIDE_OFFSET_MM * (lShapeCornerMode === 'right' ? -1 : 1));
+            var newP0 = getPerpStart(pts[0], pts[1], GUIDE_OFFSET_MM);
+            var newP2 = getPerpEnd(pts[1], pts[2], GUIDE_OFFSET_MM);
+
+            var offPts = [newP0, newP1, newP2];
+
+            // 计算几何长度 (在缩放前)
+            var rawLenSide = Math.sqrt(Math.pow(newP1.x - newP0.x, 2) + Math.pow(newP1.y - newP0.y, 2));
+            var rawLenFront = Math.sqrt(Math.pow(newP2.x - newP1.x, 2) + Math.pow(newP2.y - newP1.y, 2));
+            var geoLenSide = rawLenSide - END_SHORTEN_MM;
+            var geoLenFront = rawLenFront - END_SHORTEN_MM;
+            
+            geoLengths = { f: geoLenFront, s: geoLenSide };
+
+            // --- 动态缩放计算 ---
+            var allRawPoints = pts.concat(offPts);
+            var transform = getTransform(allRawPoints, 500, 280);
+            var t = function(p) { return { x: p.x * transform.scale + transform.tx, y: p.y * transform.scale + transform.ty }; };
+            var scale = transform.scale > 1 ? 1 : transform.scale;
+            var textOffsetPx = TEXT_OFFSET_MM * scale;
+            var guideTextOffsetPx = GUIDE_TEXT_OFFSET_MM * scale;
+
+            // --- 应用变换并绘制 ---
+            var tPts = pts.map(t);
+            var tOffPts = offPts.map(t);
+
+            // 绘制墙体线
+            svg.innerHTML += '<line x1="' + tPts[0].x + '" y1="' + tPts[0].y + '" x2="' + tPts[1].x + '" y2="' + tPts[1].y + '" class="svg-wall" />';
+            svg.innerHTML += '<line x1="' + tPts[1].x + '" y1="' + tPts[1].y + '" x2="' + tPts[2].x + '" y2="' + tPts[2].y + '" class="svg-wall" />';
+
+            // 绘制材料线 (应用端点缩短)
+            var shortenVecS = { x: (tOffPts[1].x - tOffPts[0].x) / Math.sqrt(Math.pow(tOffPts[1].x - tOffPts[0].x, 2) + Math.pow(tOffPts[1].y - tOffPts[0].y, 2)), y: (tOffPts[1].y - tOffPts[0].y) / Math.sqrt(Math.pow(tOffPts[1].x - tOffPts[0].x, 2) + Math.pow(tOffPts[1].y - tOffPts[0].y, 2)) };
+            var shortenVecF = { x: (tOffPts[2].x - tOffPts[1].x) / Math.sqrt(Math.pow(tOffPts[2].x - tOffPts[1].x, 2) + Math.pow(tOffPts[2].y - tOffPts[1].y, 2)), y: (tOffPts[2].y - tOffPts[1].y) / Math.sqrt(Math.pow(tOffPts[2].x - tOffPts[1].x, 2) + Math.pow(tOffPts[2].y - tOffPts[1].y, 2)) };
+
+            var rStart = { x: tOffPts[0].x + shortenVecS.x * END_SHORTEN_MM * scale, y: tOffPts[0].y + shortenVecS.y * END_SHORTEN_MM * scale };
+            var rEnd = { x: tOffPts[2].x - shortenVecF.x * END_SHORTEN_MM * scale, y: tOffPts[2].y - shortenVecF.y * END_SHORTEN_MM * scale };
+
+            svg.innerHTML += '<line x1="' + rStart.x + '" y1="' + rStart.y + '" x2="' + tOffPts[1].x + '" y2="' + tOffPts[1].y + '" class="svg-guide" />';
+            svg.innerHTML += '<line x1="' + tOffPts[1].x + '" y1="' + tOffPts[1].y + '" x2="' + rEnd.x + '" y2="' + rEnd.y + '" class="svg-guide" />';
+
+            // 绘制右转角（材料线）
+            drawAngleArc(svg, tOffPts[1], tOffPts[0], tOffPts[2], 90, scale);
+
+            // 绘制标签
+            var drawLabels = function(pStart, pEnd, val, isRed, segmentLen) {
+                var mid = { x: (pStart.x + pEnd.x)/2, y: (pStart.y + pEnd.y)/2 };
+                var dx = pEnd.x - pStart.x; var dy = pEnd.y - pStart.y;
+                var len = Math.sqrt(dx*dx + dy*dy);
+                if (len === 0) return;
+
+                var displayLen = isRed ? Math.round(segmentLen) : val;
+                var suffix = isRed ? " 材料尺寸" : suffixText;
+                var textContent = displayLen + suffix;
+
+                var nx = -dy/len; var ny = dx/len;
+                if (lShapeCornerMode === 'right') { nx = -nx; ny = -ny; }
+                if (!isRed) {
+                    var isUpper = (mid.y < 280/2);
+                    if (isUpper && ny > 0) { nx=-nx; ny=-ny; }
+                    if (!isUpper && ny < 0) { nx=-nx; ny=-ny; }
+                }
+                var offsetDist = isRed ? guideTextOffsetPx * 2 : (textDir * textOffsetPx * 1.3);
+                var tx = mid.x + nx * offsetDist; var ty = mid.y + ny * offsetDist;
+                var angle = Math.atan2(dy, dx) * 180 / Math.PI;
+                if (angle > 90) angle -= 180; if (angle < -90) angle += 180;
+
+                var className = isRed ? 'svg-guide-text' : 'svg-text';
+                svg.innerHTML += '<text x="' + tx + '" y="' + ty + '" class="' + className + '" transform="rotate(' + angle + ', ' + tx + ', ' + ty + ')">' + textContent + '</text>';
+
+                allDrawnPoints.push({x: tx, y: ty});
+            };
+
+            // 墙体标签
+            drawLabels(tPts[0], tPts[1], s, false, 0);
+            drawLabels(tPts[1], tPts[2], f, false, 0);
+
+            // 材料线标签
+            drawLabels(rStart, tOffPts[1], s, true, geoLenSide);
+            drawLabels(tOffPts[1], rEnd, f, true, geoLenFront);
+
+            // 将所有L型相关的点加入总集合
+            allDrawnPoints.push.apply(allDrawnPoints, tPts);
+            allDrawnPoints.push.apply(allDrawnPoints, tOffPts);
+            allDrawnPoints.push(rStart, rEnd);
+        }
+
+        // --- 动态设置 SVG 的 viewBox ---
+        if (allDrawnPoints.length > 0) {
+            var xs = allDrawnPoints.map(function(p) { return p.x; });
+            var ys = allDrawnPoints.map(function(p) { return p.y; });
+            var minX = Math.min.apply(Math, xs), maxX = Math.max.apply(Math, xs);
+            var minY = Math.min.apply(Math, ys), maxY = Math.max.apply(Math, ys);
+            var pad = 10; // 增加一点内边距
+            svg.setAttribute('viewBox', (minX - pad) + ' ' + (minY - pad) + ' ' + ((maxX - minX) + 2*pad) + ' ' + ((maxY - minY) + 2*pad));
+        } else {
+            // 如果没有点，则使用默认视口
+            svg.setAttribute('viewBox', '0 0 500 280');
+        }
+
+        debugInfo.innerHTML = debugParts.join(' | ');
+    }
+
+
+    function calculate() {
+        var type = document.getElementById('room-type').value;
+        var model = modelValue.value || modelInput.value.replace('款', '');
+        var resultGrid = document.getElementById('result-grid');
+        var resName = document.getElementById('res-model-name');
+        if (!model) { alert("请选择款式"); return; }
+        resName.textContent = model + '款';
+        resultGrid.innerHTML = '';
+        
+        if (type === 'diamond') {
+            if (geoLengths.l === 0) { alert("请先生成图"); return; }
+            createResultItem("左扇", geoLengths.l);
+            createResultItem("中扇", geoLengths.c);
+            createResultItem("右扇", geoLengths.r);
+        } else if (type === 'lshape') {
+            if (geoLengths.f === 0) { alert("请先生成图"); return; }
+            createResultItem("正面", geoLengths.f);
+            createResultItem("侧面", geoLengths.s);
+        }
+        document.getElementById('result-area').style.display = 'block';
+    }
+
+    function createResultItem(label, geoLen) {
+        var div = document.createElement('div');
+        div.className = 'res-item';
+        div.innerHTML = '<div class="res-label">' + label + '</div><div class="res-value">' + geoLen.toFixed(2) + '</div><div class="res-cad-ref">已含端点减 5mm</div>';
+        document.getElementById('result-grid').appendChild(div);
+    }
+
+    initOptions();
+    updateModeUI();
+    updateLShapeModeUI();
+    drawDiagram();
+</script>
+
+</body>
+</html>
